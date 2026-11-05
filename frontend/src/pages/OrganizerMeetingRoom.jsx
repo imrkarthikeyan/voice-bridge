@@ -6,7 +6,9 @@ import { QrCodeModal } from '../components/QrCodeModal';
 import { PresentationUploadModal } from '../components/presentation/PresentationUploadModal';
 import { PresentationSelector } from '../components/presentation/PresentationSelector';
 import { PresentationViewer } from '../components/presentation/PresentationViewer';
+import { SlideInspector } from '../components/presentation/SlideInspector';
 import { MeetingControlSidebar } from '../components/presentation/MeetingControlSidebar';
+import { MeetingIntelligencePanel } from '../components/MeetingIntelligencePanel';
 import { useStompWebSocket } from '../hooks/useStompWebSocket';
 import { useWebRtcListener } from '../hooks/useWebRtcListener';
 import { getMeetingByCode, closeMeeting } from '../api/meetings';
@@ -23,6 +25,13 @@ import {
   getMeetingPresentationSession,
   startPresentation,
 } from '../api/presentations';
+import {
+  downloadMeetingDocument,
+  generateMeetingDocument,
+  getMeetingDocument,
+  publishMeetingDocument,
+  reviewMeetingDocument,
+} from '../api/documents';
 import {
   QrCode,
   Power,
@@ -49,15 +58,21 @@ export const OrganizerMeetingRoom = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [transcript, setTranscript] = useState('');
+  const [transcriptTranslation, setTranscriptTranslation] = useState(null);
   const [transcriptSpeaker, setTranscriptSpeaker] = useState('');
+  const [transcriptSlideNumber, setTranscriptSlideNumber] = useState(null);
+  const [transcriptHistory, setTranscriptHistory] = useState([]);
+  const [meetingDocument, setMeetingDocument] = useState(null);
+  const [documentBusy, setDocumentBusy] = useState(false);
 
   const [isQrOpen, setIsQrOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isClosingModal, setIsClosingModal] = useState(false);
   const [showPresentationList, setShowPresentationList] = useState(false);
+  const [slideAnalysisRefreshKey, setSlideAnalysisRefreshKey] = useState(0);
 
   // Real-time STOMP connection
-  const { isConnected, lastEvent, signalMessage, sendSignal } = useStompWebSocket(meetingCode);
+  const { isConnected, lastEvent, signalMessage, subtitleMessage, sendSignal } = useStompWebSocket(meetingCode);
 
   // Active Speaker calculation
   const activeSpeakerRequest = queue.find((q) => q.status === 'SPEAKING' || q.status === 'APPROVED');
@@ -67,16 +82,41 @@ export const OrganizerMeetingRoom = () => {
   const { isReceivingAudio, audioLevel, closeConnection, isAutoplayBlocked, unmuteAudio } = useWebRtcListener(
     sendSignal,
     signalMessage,
-    activeSpeakerName
+    activeSpeakerRequest?.participantId
   );
 
   // Listen for Live Subtitles (TRANSCRIPT) signals
+  useEffect(() => {
+    if (!subtitleMessage?.payload) return;
+    const payload = subtitleMessage.payload;
+    if (payload.text) {
+      setTranscript(payload.text);
+      setTranscriptTranslation(payload.translation || null);
+      if (payload.speakerName) setTranscriptSpeaker(payload.speakerName);
+      setTranscriptSlideNumber(payload.slideNumber || null);
+      if (!payload.partial) {
+        setTranscriptHistory((current) => [
+          ...current.slice(-49),
+          { id: payload.id || `${Date.now()}-${current.length}`, slideNumber: payload.slideNumber, text: payload.text },
+        ]);
+      }
+    }
+  }, [subtitleMessage]);
+
   useEffect(() => {
     if (!signalMessage) return;
     if (signalMessage.type === 'TRANSCRIPT' && signalMessage.text) {
       setTranscript(signalMessage.text);
       if (signalMessage.speakerName) {
         setTranscriptSpeaker(signalMessage.speakerName);
+      }
+      setTranscriptSlideNumber(signalMessage.slideNumber || null);
+      setTranscriptTranslation(signalMessage.translation || null);
+      if (signalMessage.isFinal && signalMessage.text) {
+        setTranscriptHistory((current) => [
+          ...current.slice(-49),
+          { id: signalMessage.segmentId || `${Date.now()}-${current.length}`, slideNumber: signalMessage.slideNumber, text: signalMessage.text },
+        ]);
       }
     }
   }, [signalMessage]);
@@ -85,6 +125,8 @@ export const OrganizerMeetingRoom = () => {
     if (!activeSpeakerName) {
       setTranscript('');
       setTranscriptSpeaker('');
+      setTranscriptSlideNumber(null);
+      setTranscriptTranslation(null);
     }
   }, [activeSpeakerName]);
 
@@ -142,6 +184,22 @@ export const OrganizerMeetingRoom = () => {
     fetchRoomData();
   }, [fetchRoomData]);
 
+  useEffect(() => {
+    getMeetingDocument(meetingCode).then(setMeetingDocument).catch(() => setMeetingDocument(null));
+  }, [meetingCode]);
+
+  const generateDocument = async () => {
+    setDocumentBusy(true);
+    try {
+      setMeetingDocument(await generateMeetingDocument(meetingCode));
+    } finally {
+      setDocumentBusy(false);
+    }
+  };
+
+  const reviewDocument = async () => setMeetingDocument(await reviewMeetingDocument(meetingCode));
+  const publishDocument = async () => setMeetingDocument(await publishMeetingDocument(meetingCode));
+
   // Handle STOMP events (queue, participants, presentations)
   useEffect(() => {
     if (!lastEvent) return;
@@ -173,6 +231,8 @@ export const OrganizerMeetingRoom = () => {
       } else {
         fetchRoomData();
       }
+    } else if (type === 'SLIDE_ANALYSIS_UPDATED') {
+      setSlideAnalysisRefreshKey((key) => key + 1);
     } else if (type === 'MEETING_CLOSED') {
       navigate('/dashboard');
     }
@@ -397,6 +457,8 @@ export const OrganizerMeetingRoom = () => {
                 onSessionChange={(newSession) => setPresentationSession(newSession)}
                 activeSpeakerName={activeSpeakerName || transcriptSpeaker}
                 transcript={transcript}
+                transcriptTranslation={transcriptTranslation}
+                transcriptSlideNumber={transcriptSlideNumber}
                 isLiveSpeaker={isReceivingAudio || !!activeSpeakerName}
               />
             ) : (
@@ -419,6 +481,13 @@ export const OrganizerMeetingRoom = () => {
                   <span>Upload Presentation</span>
                 </button>
               </div>
+            )}
+            {activePresentation && presentationSession && (
+              <SlideInspector
+                presentationId={activePresentation.id}
+                slideNumber={presentationSession.currentSlide}
+                refreshKey={slideAnalysisRefreshKey}
+              />
             )}
 
             {/* Accordion / Drawer for Presentation Selector */}
@@ -472,6 +541,56 @@ export const OrganizerMeetingRoom = () => {
               onReorder={handleReorder}
               onOpenQrModal={() => setIsQrOpen(true)}
             />
+            <MeetingIntelligencePanel meetingCode={meeting.meetingCode} />
+            <section className="mt-4 bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
+              <h3 className="text-sm font-semibold text-white">Meeting document (PDF)</h3>
+              <p className="mt-1 text-xs text-slate-400">
+                Assemble slides, aligned transcript, questions, grounded summaries, and citations.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" disabled={documentBusy} onClick={generateDocument}
+                  className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                  {documentBusy ? 'Generating…' : 'Generate draft'}
+                </button>
+                {meetingDocument?.status === 'DRAFT' && (
+                  <button type="button" onClick={reviewDocument}
+                    className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white">
+                    Mark reviewed
+                  </button>
+                )}
+                {meetingDocument?.status === 'REVIEWED' && (
+                  <button type="button" onClick={publishDocument}
+                    className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">
+                    Publish
+                  </button>
+                )}
+                {meetingDocument && (
+                  <button type="button" onClick={() => downloadMeetingDocument(meetingCode)}
+                    className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-semibold text-white">
+                    Download PDF
+                  </button>
+                )}
+              </div>
+              {meetingDocument && <p className="mt-2 text-xs text-slate-400">Status: {meetingDocument.status}</p>}
+            </section>
+            {transcriptHistory.length > 0 && (
+              <section className="mt-4 bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
+                <h3 className="text-sm font-semibold text-white mb-3">Transcript by slide</h3>
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {Object.entries(transcriptHistory.reduce((groups, item) => {
+                    const key = item.slideNumber || 'Unaligned';
+                    return { ...groups, [key]: [...(groups[key] || []), item] };
+                  }, {})).map(([slide, items]) => (
+                    <div key={slide}>
+                      <p className="text-xs font-semibold text-indigo-300 mb-1">
+                        {slide === 'Unaligned' ? slide : `Slide ${slide}`}
+                      </p>
+                      {items.map((item) => <p key={item.id} className="text-xs text-slate-300">{item.text}</p>)}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         </div>
       </main>

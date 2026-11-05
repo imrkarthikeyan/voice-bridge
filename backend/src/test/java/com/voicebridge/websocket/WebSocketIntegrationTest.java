@@ -21,6 +21,7 @@ import org.springframework.messaging.simp.stomp.StompSessionHandlerAdapter;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
+import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
 
 import java.lang.reflect.Type;
@@ -88,8 +89,10 @@ class WebSocketIntegrationTest {
         WebSocketStompClient stompClient = buildStompClient();
         BlockingQueue<MeetingEvent> receivedEvents = new LinkedBlockingQueue<>();
 
+        StompHeaders connectHeaders = new StompHeaders();
+        connectHeaders.add("Authorization", "Bearer " + token);
         StompSession session = stompClient
-                .connectAsync("ws://localhost:" + port + "/ws", new StompSessionHandlerAdapter() {
+                .connectAsync("ws://localhost:" + port + "/ws", new WebSocketHttpHeaders(), connectHeaders, new StompSessionHandlerAdapter() {
                 })
                 .get(5, TimeUnit.SECONDS);
 
@@ -135,8 +138,10 @@ class WebSocketIntegrationTest {
 
         BlockingQueue<SignalMessage> organizerReceived = new LinkedBlockingQueue<>();
 
+        StompHeaders organizerConnectHeaders = new StompHeaders();
+        organizerConnectHeaders.add("Authorization", "Bearer " + token);
         StompSession organizerSession = organizerClient
-                .connectAsync("ws://localhost:" + port + "/ws", new StompSessionHandlerAdapter() {
+                .connectAsync("ws://localhost:" + port + "/ws", new WebSocketHttpHeaders(), organizerConnectHeaders, new StompSessionHandlerAdapter() {
                 })
                 .get(5, TimeUnit.SECONDS);
 
@@ -147,21 +152,21 @@ class WebSocketIntegrationTest {
 
         organizerSession.subscribe(signalHeaders,
                 new org.springframework.messaging.simp.stomp.StompFrameHandler() {
-                    @Override
-                    public Type getPayloadType(StompHeaders headers) {
-                        return SignalMessage.class;
-                    }
+            @Override
+            public Type getPayloadType(StompHeaders headers) {
+                return SignalMessage.class;
+            }
 
-                    @Override
-                    public void handleFrame(StompHeaders headers, Object payload) {
-                        organizerReceived.add((SignalMessage) payload);
-                    }
-                });
+            @Override
+            public void handleFrame(StompHeaders headers, Object payload) {
+                organizerReceived.add((SignalMessage) payload);
+            }
+        });
 
         Thread.sleep(500);
 
         StompSession speakerSession = speakerClient
-                .connectAsync("ws://localhost:" + port + "/ws", new StompSessionHandlerAdapter() {
+                .connectAsync("ws://localhost:" + port + "/ws", new WebSocketHttpHeaders(), participantConnectHeaders(meetingCode), new StompSessionHandlerAdapter() {
                 })
                 .get(5, TimeUnit.SECONDS);
 
@@ -183,5 +188,16 @@ class WebSocketIntegrationTest {
 
         organizerSession.disconnect();
         speakerSession.disconnect();
+    }
+
+    private StompHeaders participantConnectHeaders(String meetingCode) throws Exception {
+        JoinMeetingRequest request = new JoinMeetingRequest();
+        request.setName("WebRTC Speaker");
+        org.springframework.http.ResponseEntity<String> response = restTemplate.postForEntity(
+                "http://localhost:" + port + "/api/participants/join/" + meetingCode, request, String.class);
+        StompHeaders headers = new StompHeaders();
+        headers.add("X-Participant-Token",
+                objectMapper.readTree(response.getBody()).get("sessionToken").asText());
+        return headers;
     }
 }

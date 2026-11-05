@@ -80,6 +80,16 @@ npm run lint
 npm run build
 ```
 
+For same-network microphone testing, start Vite on the LAN interface:
+
+```bash
+npm run dev -- --host 0.0.0.0
+```
+
+Open `https://192.168.31.9:5173` on the phone, accept the development certificate warning,
+and allow microphone access. The phone and organizer computer must be on the same Wi-Fi
+network. Use HTTPS; mobile browsers block microphone access on plain HTTP LAN addresses.
+
 ## Docker
 
 ```bash

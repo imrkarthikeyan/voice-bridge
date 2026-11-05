@@ -227,4 +227,18 @@ flowchart TD
 2. **Audience Join:** Attendee scans QR code → Joins meeting (`/api/participants/join/{code}`) → Receives UUID `sessionToken` → Subscribes to STOMP WebSocket topic `/topic/meetings/{code}`.
 3. **Queue Moderation:** Attendee raises hand → `SpeakingRequest` saved with FIFO `queue_position` → Host approves request → Synchronized lock verifies single-speaker invariant.
 4. **P2P Audio & Subtitles:** Approved attendee browser sends WebRTC Offer over WebSocket → Host browser returns WebRTC Answer → P2P WebRTC audio stream connects → Host browser plays audio and passes stream to `Web Speech API` for live slide caption overlay.
+
+### Slide intelligence
+
+After the presentation is rendered, `SlideAnalysisService` extracts one structured record per
+slide from PPTX shapes or PDF text. Each record includes editable title and concepts,
+extracted text, notes, code/table flags, and `structure_json`. The record starts in `QUEUED`
+state and `SlideEnrichmentService` creates an `SLIDE_ENRICH` entry in `ai_jobs`, calls the
+local AI service at `/v1/slides/enrich`, and publishes `SLIDE_ANALYSIS_UPDATED` on the
+meeting topic. If the optional embedding model is unavailable, deterministic local analysis
+is retained and the slide remains usable.
+
+Organizers can review and correct the active slide through `SlideInspector`; updates use
+`PUT /api/presentations/{presentationId}/analysis/{slideId}`. Analysis data is never exposed
+through the audience presentation endpoints.
 5. **Closure:** Host closes session → Status transitions to `CLOSED` → WebSocket notifies all audience clients → Audience browsers redirect to `/closed/:code`.

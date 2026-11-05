@@ -41,12 +41,24 @@ app:
     secret: ${JWT_SECRET:change-this-super-secret-key-in-production-min-256-bits-long}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:*}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,https://localhost:5173,http://localhost,http://127.0.0.1:5173,https://127.0.0.1:5173,http://192.168.31.9:5173,https://192.168.31.9:5173,http://192.168.31.9,https://192.168.31.9}
   qr:
-    base-url: ${QR_BASE_URL:http://localhost:5173}
+    base-url: ${QR_BASE_URL:https://192.168.31.9:5173}
   presentation:
     max-file-size: ${PRESENTATION_MAX_FILE_SIZE:52428800}
     storage-dir: ${PRESENTATION_STORAGE_DIR:uploads/presentations}
+  ai:
+    base-url: ${VOICEBRIDGE_AI_BASE_URL:http://localhost:8090}
+    websocket-url: ${VOICEBRIDGE_AI_WEBSOCKET_URL:ws://localhost:8090/ws/audio}
+  audience:
+    oauth:
+      github:
+        enabled: ${GITHUB_OAUTH_ENABLED:false}
+        client-id: ${GITHUB_OAUTH_CLIENT_ID:}
+        client-secret: ${GITHUB_OAUTH_CLIENT_SECRET:}
+        callback-url: ${GITHUB_OAUTH_CALLBACK_URL:http://localhost:8080/api/audience/oauth/github/callback}
+        frontend-success-url: ${GITHUB_OAUTH_FRONTEND_SUCCESS_URL:http://localhost:5173/audience/oauth/callback}
+    audit-cleanup-cron: ${AUDIENCE_AUDIT_CLEANUP_CRON:0 15 3 * * *}
 
 springdoc:
   api-docs:

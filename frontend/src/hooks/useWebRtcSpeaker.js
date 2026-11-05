@@ -8,16 +8,25 @@ const ICE_SERVERS = {
     { urls: 'stun:stun3.l.google.com:19302' },
     { urls: 'stun:stun4.l.google.com:19302' },
     { urls: 'stun:stun.services.mozilla.com' },
+    ...(import.meta.env.VITE_TURN_URL
+      ? [{
+        urls: import.meta.env.VITE_TURN_URL,
+        username: import.meta.env.VITE_TURN_USERNAME,
+        credential: import.meta.env.VITE_TURN_PASSWORD,
+      }]
+      : []),
   ],
 };
 
-export const useWebRtcSpeaker = (sendSignal, signalMessage) => {
+export const useWebRtcSpeaker = (sendSignal, signalMessage, participantId) => {
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
+  const pendingIceCandidatesRef = useRef([]);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
 
   const [isLive, setIsLive] = useState(false);
+  const [localStream, setLocalStream] = useState(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [error, setError] = useState(null);
 
@@ -27,11 +36,13 @@ export const useWebRtcSpeaker = (sendSignal, signalMessage) => {
       localStreamRef.current.getTracks().forEach((track) => track.stop());
       localStreamRef.current = null;
     }
+    setLocalStream(null);
 
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
+    pendingIceCandidatesRef.current = [];
 
     if (audioContextRef.current) {
       audioContextRef.current.close();
@@ -109,6 +120,7 @@ export const useWebRtcSpeaker = (sendSignal, signalMessage) => {
       });
 
       localStreamRef.current = stream;
+      setLocalStream(stream);
       setupAudioVisualizer(stream);
 
       // Create WebRTC peer connection
@@ -124,6 +136,7 @@ export const useWebRtcSpeaker = (sendSignal, signalMessage) => {
           sendSignal({
             type: 'ICE_CANDIDATE',
             from: 'SPEAKER',
+            participantId,
             candidate: event.candidate,
           });
         }
@@ -148,6 +161,7 @@ export const useWebRtcSpeaker = (sendSignal, signalMessage) => {
       sendSignal({
         type: 'OFFER',
         from: 'SPEAKER',
+        participantId,
         sdp: offer.sdp,
       });
 
@@ -157,7 +171,7 @@ export const useWebRtcSpeaker = (sendSignal, signalMessage) => {
       setError(err.message || 'Could not access microphone');
       setIsLive(false);
     }
-  }, [sendSignal, stopStreaming]);
+  }, [sendSignal, stopStreaming, participantId]);
 
   // Handle incoming signals from Organizer (SDP Answer & ICE Candidates)
   useEffect(() => {
@@ -167,7 +181,10 @@ export const useWebRtcSpeaker = (sendSignal, signalMessage) => {
       const pc = peerConnectionRef.current;
       if (!pc) return;
 
-      if (signalMessage.from === 'ORGANIZER') {
+      if (
+        signalMessage.from === 'ORGANIZER'
+        && (!signalMessage.participantId || signalMessage.participantId === participantId)
+      ) {
         if (signalMessage.type === 'ANSWER' && signalMessage.sdp) {
           try {
             const remoteDesc = new RTCSessionDescription({
@@ -175,12 +192,21 @@ export const useWebRtcSpeaker = (sendSignal, signalMessage) => {
               sdp: signalMessage.sdp,
             });
             await pc.setRemoteDescription(remoteDesc);
+            for (const candidate of pendingIceCandidatesRef.current) {
+              await pc.addIceCandidate(candidate);
+            }
+            pendingIceCandidatesRef.current = [];
           } catch (e) {
             console.error('Failed to set remote description answer:', e);
           }
         } else if (signalMessage.type === 'ICE_CANDIDATE' && signalMessage.candidate) {
           try {
-            await pc.addIceCandidate(new RTCIceCandidate(signalMessage.candidate));
+            const candidate = new RTCIceCandidate(signalMessage.candidate);
+            if (pc.remoteDescription) {
+              await pc.addIceCandidate(candidate);
+            } else {
+              pendingIceCandidatesRef.current.push(candidate);
+            }
           } catch (e) {
             console.error('Failed to add ICE candidate:', e);
           }
@@ -189,7 +215,7 @@ export const useWebRtcSpeaker = (sendSignal, signalMessage) => {
     };
 
     handleSignal();
-  }, [signalMessage]);
+  }, [signalMessage, participantId]);
 
   useEffect(() => {
     return () => {
@@ -201,6 +227,7 @@ export const useWebRtcSpeaker = (sendSignal, signalMessage) => {
     isLive,
     audioLevel,
     error,
+    localStream,
     startStreaming,
     stopStreaming,
   };

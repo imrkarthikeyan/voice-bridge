@@ -3,5 +3,6 @@ package com.voicebridge.webrtc;
 public enum SignalType {
     OFFER,
     ANSWER,
-    ICE_CANDIDATE
+    ICE_CANDIDATE,
+    TRANSCRIPT
 }

@@ -12,7 +12,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-voicebridge} -d $${POSTGRES_DB:-voicebridge}"]
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-voicebridge} -d $${POSTGRES_DB:-voicebridge}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -35,19 +35,60 @@ services:
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-voicebridge_dev_password}
       JWT_SECRET: ${JWT_SECRET:-change-this-super-secret-key-in-production-min-256-bits-long}
       JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://localhost:5173,http://127.0.0.1}
-      QR_BASE_URL: ${QR_BASE_URL:-http://localhost}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://localhost:5173,https://localhost:5173,http://127.0.0.1,http://127.0.0.1:5173,https://127.0.0.1:5173,http://192.168.31.9,http://192.168.31.9:5173,https://192.168.31.9,https://192.168.31.9:5173}
+      QR_BASE_URL: ${QR_BASE_URL:-https://192.168.31.9}
+      VOICEBRIDGE_AI_BASE_URL: http://ai:8090
+      VOICEBRIDGE_AI_WEBSOCKET_URL: ws://ai:8090/ws/audio
+
+  ai:
+    build:
+      context: ./services/ai
+      dockerfile: Dockerfile
+    container_name: voicebridge-ai
+    restart: always
+    ports:
+      - "8090:8090"
+    environment:
+      VOICEBRIDGE_AI_ASR_MODEL: ${VOICEBRIDGE_AI_ASR_MODEL:-small}
+      VOICEBRIDGE_AI_ASR_DEVICE: ${VOICEBRIDGE_AI_ASR_DEVICE:-cpu}
+      VOICEBRIDGE_AI_ASR_COMPUTE_TYPE: ${VOICEBRIDGE_AI_ASR_COMPUTE_TYPE:-int8}
+      VOICEBRIDGE_AI_ASR_LANGUAGE: ${VOICEBRIDGE_AI_ASR_LANGUAGE:-}
+      VOICEBRIDGE_AI_VAD_ENABLED: ${VOICEBRIDGE_AI_VAD_ENABLED:-true}
+      VOICEBRIDGE_AI_VAD_THRESHOLD: ${VOICEBRIDGE_AI_VAD_THRESHOLD:-0.01}
+      VOICEBRIDGE_AI_SUPPORTED_TRANSLATION_LANGUAGES: ${VOICEBRIDGE_AI_SUPPORTED_TRANSLATION_LANGUAGES:-en,ta}
+      VOICEBRIDGE_AI_EMBEDDING_MODEL: ${VOICEBRIDGE_AI_EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
+      VOICEBRIDGE_AI_SUMMARIZATION_MODEL: ${VOICEBRIDGE_AI_SUMMARIZATION_MODEL:-sshleifer/distilbart-cnn-12-6}
+      VOICEBRIDGE_AI_OCR_LANGUAGES: ${VOICEBRIDGE_AI_OCR_LANGUAGES:-eng+tam}
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_AI_WS_URL: ${VITE_AI_WS_URL:-}
+        VITE_TURN_URL: ${VITE_TURN_URL:-turn:192.168.31.9:3478}
+        VITE_TURN_USERNAME: ${VITE_TURN_USERNAME:-voicebridge}
+        VITE_TURN_PASSWORD: ${VITE_TURN_PASSWORD:-change-me-turn-password}
+    environment:
+      LAN_IP: ${LAN_IP:-192.168.31.9}
     container_name: voicebridge-frontend
     restart: always
     depends_on:
       - backend
     ports:
       - "80:80"
+      - "443:443"
+
+  coturn:
+    image: coturn/coturn:4.6
+    container_name: voicebridge-coturn
+    restart: always
+    command: >
+      -n --log-file=stdout --realm=voicebridge --lt-cred-mech --user=${TURN_USERNAME:-voicebridge}:${TURN_PASSWORD:-change-me-turn-password} --min-port=49160 --max-port=49200
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+      - "49160-49200:49160-49200/udp"
 
 volumes:
   postgres_data:

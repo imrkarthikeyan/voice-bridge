@@ -1,0 +1,1 @@
+"""VoiceBridge local AI service."""

@@ -13,6 +13,9 @@ import {
   LogOut,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { QuestionComposer } from '../components/QuestionComposer';
+import { getQuestions } from '../api/intelligence';
+import { AudienceProfileForm } from '../components/AudienceProfileForm';
 
 export const AudienceWaitingPage = () => {
   const { meetingCode } = useParams();
@@ -25,6 +28,7 @@ export const AudienceWaitingPage = () => {
   const [loading, setLoading] = useState(true);
   const [raising, setRaising] = useState(false);
   const [error, setError] = useState('');
+  const [questions, setQuestions] = useState([]);
 
   const { isConnected, lastEvent } = useStompWebSocket(meetingCode);
 
@@ -60,6 +64,26 @@ export const AudienceWaitingPage = () => {
     fetchStatus();
   }, [fetchStatus]);
 
+  useEffect(() => {
+    if (!sessionToken) return undefined;
+    const timer = window.setInterval(fetchStatus, 2000);
+    return () => window.clearInterval(timer);
+  }, [fetchStatus, sessionToken]);
+
+  const refreshQuestions = useCallback(async () => {
+    if (!sessionToken) return;
+    try {
+      const rows = await getQuestions(meetingCode);
+      setQuestions(rows.filter((question) => question.participantName === participantName));
+    } catch {
+      // Question submission still works if history is temporarily unavailable.
+    }
+  }, [meetingCode, participantName, sessionToken]);
+
+  useEffect(() => {
+    refreshQuestions();
+  }, [refreshQuestions]);
+
   // Handle STOMP WebSocket real-time events
   useEffect(() => {
     if (!lastEvent) return;
@@ -68,7 +92,7 @@ export const AudienceWaitingPage = () => {
       lastEvent.type === 'SPEAKER_APPROVED' ||
       lastEvent.type === 'SPEAKER_REJECTED' ||
       lastEvent.type === 'SPEAKER_STARTED' ||
-      lastEvent.type === 'SPEAKER_STOPPED'
+      (lastEvent.type === 'SPEAKER_ENDED' || lastEvent.type === 'SPEAKER_STOPPED')
     ) {
       fetchStatus();
     } else if (lastEvent.type === 'MEETING_CLOSED') {
@@ -188,6 +212,7 @@ export const AudienceWaitingPage = () => {
                 </div>
               </div>
             )}
+            <AudienceProfileForm />
 
             {/* Raise Hand Button */}
             {!isHandRaised && (
@@ -206,6 +231,34 @@ export const AudienceWaitingPage = () => {
                 Keep your screen on. Your phone will prompt for microphone access once approved.
               </p>
             )}
+
+            <div className="mt-6 border-t border-slate-800 pt-5 text-left">
+              <h3 className="mb-2 text-sm font-semibold text-white">Ask without taking the microphone</h3>
+              <QuestionComposer meetingCode={meetingCode} onCreated={refreshQuestions} />
+
+              {questions.length > 0 && (
+                <div className="mt-6 border-t border-slate-800 pt-4 text-left">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">My questions</h3>
+                  <div className="mt-2 space-y-2">
+                    {questions.map((question) => (
+                      <div key={question.id} className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+                        <div className="flex items-center justify-between gap-2 text-[10px]">
+                          <span className="text-indigo-300">{question.type}</span>
+                          <span className="text-slate-500">{question.status}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-200">{question.text}</p>
+                        {question.translatedText && (
+                          <p className="mt-1 text-[11px] text-slate-400">English: {question.translatedText}</p>
+                        )}
+                        <p className="mt-1 text-[10px] text-slate-500">
+                          {question.slideNumber ? `Slide ${question.slideNumber}` : 'Slide not assigned'} · {question.source === 'SPEECH' ? 'Spoken' : 'Typed'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </main>

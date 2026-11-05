@@ -21,7 +21,6 @@ public class MeetingResponse {
     private String title;
     private String description;
     private MeetingStatus status;
-    private String qrToken;
     private String joinUrl;
     private String qrCodeUrl;
     private Instant createdAt;

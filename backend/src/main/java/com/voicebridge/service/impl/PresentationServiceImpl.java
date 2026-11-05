@@ -6,6 +6,7 @@ import com.voicebridge.dto.response.PresentationSessionResponse;
 import com.voicebridge.entity.Meeting;
 import com.voicebridge.entity.Presentation;
 import com.voicebridge.entity.PresentationSession;
+import com.voicebridge.entity.SlideVisit;
 import com.voicebridge.entity.enums.MeetingStatus;
 import com.voicebridge.exception.BusinessRuleViolationException;
 import com.voicebridge.exception.ResourceNotFoundException;
@@ -44,6 +45,10 @@ public class PresentationServiceImpl implements PresentationService {
     private final PresentationMapper presentationMapper;
     private final PresentationSessionMapper sessionMapper;
     private final MeetingEventPublisher eventPublisher;
+    private final com.voicebridge.service.SlideAnalysisService slideAnalysisService;
+    private final com.voicebridge.service.SlideEnrichmentService slideEnrichmentService;
+    private final com.voicebridge.repository.SlideVisitRepository slideVisitRepository;
+    private final com.voicebridge.repository.SlideRepository slideRepository;
 
     @Value("${app.presentation.max-file-size:52428800}")
     private long maxFileSize;
@@ -96,6 +101,12 @@ public class PresentationServiceImpl implements PresentationService {
                 .build();
 
         presentation = presentationRepository.save(presentation);
+        try (InputStream analysisStream = storageService.getPresentationInputStream(storagePath, originalFilename)) {
+            slideAnalysisService.analyze(presentation, analysisStream, extension);
+            slideEnrichmentService.enqueue(presentation, meeting.getId(), meeting.getMeetingCode());
+        } catch (Exception e) {
+            log.warn("Slide text analysis failed for presentation {}", presentation.getId(), e);
+        }
         log.info("Presentation uploaded: id={}, meetingId={}, totalSlides={}", presentation.getId(), meetingId, totalSlides);
 
         return presentationMapper.toResponse(presentation);
@@ -133,6 +144,12 @@ public class PresentationServiceImpl implements PresentationService {
         });
 
         storageService.deletePresentationDirectory(presentation.getStoragePath());
+        if (slideVisitRepository != null) {
+            slideVisitRepository.deleteByPresentationId(presentationId);
+        }
+        if (slideRepository != null) {
+            slideRepository.deleteByPresentationId(presentationId);
+        }
         presentationRepository.delete(presentation);
         log.info("Presentation deleted: id={}", presentationId);
     }
@@ -151,11 +168,11 @@ public class PresentationServiceImpl implements PresentationService {
 
         PresentationSession session = sessionRepository.findByMeetingId(meeting.getId())
                 .orElseGet(() -> PresentationSession.builder()
-                        .meeting(meeting)
-                        .presentation(presentation)
-                        .currentSlide(1)
-                        .presenting(true)
-                        .build());
+                .meeting(meeting)
+                .presentation(presentation)
+                .currentSlide(1)
+                .presenting(true)
+                .build());
 
         session.setPresentation(presentation);
         session.setPresenting(true);
@@ -163,6 +180,7 @@ public class PresentationServiceImpl implements PresentationService {
             session.setCurrentSlide(1);
         }
         session = sessionRepository.save(session);
+        recordSlideVisit(meeting, presentation, session.getCurrentSlide());
 
         PresentationSessionResponse response = sessionMapper.toResponse(session);
         eventPublisher.publish(meeting.getMeetingCode(), MeetingEventType.PRESENTATION_STARTED, response);
@@ -182,6 +200,13 @@ public class PresentationServiceImpl implements PresentationService {
                 .orElseThrow(() -> new BusinessRuleViolationException("No active presentation session for this meeting"));
 
         session.setPresenting(false);
+        if (slideVisitRepository != null) {
+            slideVisitRepository.findFirstByMeetingIdAndLeftMsIsNullOrderByEnteredMsDesc(meeting.getId())
+                    .ifPresent(visit -> {
+                        visit.setLeftMs(elapsedMs(meeting));
+                        slideVisitRepository.save(visit);
+                    });
+        }
         session = sessionRepository.save(session);
 
         PresentationSessionResponse response = sessionMapper.toResponse(session);
@@ -209,15 +234,23 @@ public class PresentationServiceImpl implements PresentationService {
 
         PresentationSession session = sessionRepository.findByMeetingId(meeting.getId())
                 .orElseGet(() -> PresentationSession.builder()
-                        .meeting(meeting)
-                        .presentation(presentation)
-                        .currentSlide(requestedSlide)
-                        .presenting(true)
-                        .build());
+                .meeting(meeting)
+                .presentation(presentation)
+                .currentSlide(requestedSlide)
+                .presenting(true)
+                .build());
 
         session.setPresentation(presentation);
         session.setCurrentSlide(requestedSlide);
         session = sessionRepository.save(session);
+        if (slideVisitRepository != null) {
+            slideVisitRepository.findFirstByMeetingIdAndLeftMsIsNullOrderByEnteredMsDesc(meeting.getId())
+                    .ifPresent(visit -> {
+                        visit.setLeftMs(elapsedMs(meeting));
+                        slideVisitRepository.save(visit);
+                    });
+            recordSlideVisit(meeting, presentation, requestedSlide);
+        }
 
         presentation.setCurrentSlide(requestedSlide);
         presentationRepository.save(presentation);
@@ -273,5 +306,18 @@ public class PresentationServiceImpl implements PresentationService {
             return "";
         }
         return filename.substring(lastIndex + 1);
+    }
+
+    private void recordSlideVisit(Meeting meeting, Presentation presentation, int slide) {
+        if (slideVisitRepository == null) {
+            return;
+        }
+        slideVisitRepository.save(SlideVisit.builder().meeting(meeting).presentation(presentation)
+                .slideNumber(slide).enteredMs(elapsedMs(meeting)).build());
+    }
+
+    private long elapsedMs(Meeting meeting) {
+        return meeting.getStartedAt() == null ? 0 : Math.max(0,
+                java.time.Duration.between(meeting.getStartedAt(), java.time.Instant.now()).toMillis());
     }
 }

@@ -11,6 +11,8 @@ export const PresentationViewer = ({
   onSessionChange,
   activeSpeakerName,
   transcript,
+  transcriptTranslation,
+  transcriptSlideNumber,
   isLiveSpeaker,
 }) => {
   const [currentSlide, setCurrentSlide] = useState(session?.currentSlide || presentation?.currentSlide || 1);
@@ -169,9 +171,8 @@ export const PresentationViewer = ({
   return (
     <div
       ref={containerRef}
-      className={`flex flex-col bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-2xl transition-all ${
-        isFullscreen ? 'fixed inset-0 z-50 rounded-none border-none' : 'w-full'
-      }`}
+      className={`flex flex-col bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-2xl transition-all ${isFullscreen ? 'fixed inset-0 z-50 rounded-none border-none' : 'w-full'
+        }`}
     >
       {/* Slide Canvas Header (Title) */}
       {!isFullscreen && (
@@ -233,6 +234,8 @@ export const PresentationViewer = ({
         <LiveSubtitlesOverlay
           speakerName={activeSpeakerName}
           transcript={transcript}
+          translation={transcriptTranslation}
+          slideNumber={transcriptSlideNumber}
           isLive={isLiveSpeaker}
         />
       </div>

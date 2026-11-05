@@ -21,6 +21,7 @@ import org.springframework.messaging.simp.stomp.StompSession;
 import org.springframework.messaging.simp.stomp.StompSessionHandlerAdapter;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
+import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
 
 import java.lang.reflect.Type;
@@ -93,8 +94,12 @@ public class WebSocketIsolationTest {
         BlockingQueue<MeetingEvent> eventsA = new LinkedBlockingQueue<>();
         BlockingQueue<MeetingEvent> eventsB = new LinkedBlockingQueue<>();
 
-        StompSession sessionA = clientA.connectAsync("ws://localhost:" + port + "/ws", new StompSessionHandlerAdapter() {}).get(5, TimeUnit.SECONDS);
-        StompSession sessionB = clientB.connectAsync("ws://localhost:" + port + "/ws", new StompSessionHandlerAdapter() {}).get(5, TimeUnit.SECONDS);
+        StompHeaders connectHeaders = new StompHeaders();
+        connectHeaders.add("Authorization", "Bearer " + token);
+        StompSession sessionA = clientA.connectAsync("ws://localhost:" + port + "/ws", new WebSocketHttpHeaders(), connectHeaders, new StompSessionHandlerAdapter() {
+        }).get(5, TimeUnit.SECONDS);
+        StompSession sessionB = clientB.connectAsync("ws://localhost:" + port + "/ws", new WebSocketHttpHeaders(), connectHeaders, new StompSessionHandlerAdapter() {
+        }).get(5, TimeUnit.SECONDS);
 
         sessionA.setAutoReceipt(true);
         sessionB.setAutoReceipt(true);

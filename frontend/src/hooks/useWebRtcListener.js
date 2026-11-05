@@ -8,6 +8,13 @@ const ICE_SERVERS = {
     { urls: 'stun:stun3.l.google.com:19302' },
     { urls: 'stun:stun4.l.google.com:19302' },
     { urls: 'stun:stun.services.mozilla.com' },
+    ...(import.meta.env.VITE_TURN_URL
+      ? [{
+        urls: import.meta.env.VITE_TURN_URL,
+        username: import.meta.env.VITE_TURN_USERNAME,
+        credential: import.meta.env.VITE_TURN_PASSWORD,
+      }]
+      : []),
   ],
 };
 
@@ -17,6 +24,7 @@ export const useWebRtcListener = (sendSignal, signalMessage, activeSpeaker) => {
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const animationFrameRef = useRef(null);
+  const pendingIceCandidatesRef = useRef([]);
 
   const [isReceivingAudio, setIsReceivingAudio] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
@@ -120,6 +128,7 @@ export const useWebRtcListener = (sendSignal, signalMessage, activeSpeaker) => {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
+    pendingIceCandidatesRef.current = [];
 
     if (audioElementRef.current) {
       audioElementRef.current.pause();
@@ -142,7 +151,11 @@ export const useWebRtcListener = (sendSignal, signalMessage, activeSpeaker) => {
 
     const handleSignal = async () => {
       if (signalMessage.from === 'SPEAKER') {
-        if (signalMessage.type === 'OFFER' && signalMessage.sdp) {
+        if (
+          signalMessage.type === 'OFFER'
+          && signalMessage.sdp
+          && (!activeSpeaker || signalMessage.participantId === activeSpeaker)
+        ) {
           try {
             closeConnection();
 
@@ -160,6 +173,7 @@ export const useWebRtcListener = (sendSignal, signalMessage, activeSpeaker) => {
                 sendSignal({
                   type: 'ICE_CANDIDATE',
                   from: 'ORGANIZER',
+                  participantId: signalMessage.participantId,
                   candidate: event.candidate,
                 });
               }
@@ -168,6 +182,10 @@ export const useWebRtcListener = (sendSignal, signalMessage, activeSpeaker) => {
             await pc.setRemoteDescription(
               new RTCSessionDescription({ type: 'offer', sdp: signalMessage.sdp })
             );
+            for (const candidate of pendingIceCandidatesRef.current) {
+              await pc.addIceCandidate(candidate);
+            }
+            pendingIceCandidatesRef.current = [];
 
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
@@ -175,16 +193,26 @@ export const useWebRtcListener = (sendSignal, signalMessage, activeSpeaker) => {
             sendSignal({
               type: 'ANSWER',
               from: 'ORGANIZER',
+              participantId: signalMessage.participantId,
               sdp: answer.sdp,
             });
           } catch (err) {
             console.error('Error handling WebRTC OFFER:', err);
           }
-        } else if (signalMessage.type === 'ICE_CANDIDATE' && signalMessage.candidate) {
+        } else if (
+          signalMessage.type === 'ICE_CANDIDATE'
+          && signalMessage.candidate
+          && (!activeSpeaker || signalMessage.participantId === activeSpeaker)
+        ) {
           const pc = peerConnectionRef.current;
           if (pc) {
             try {
-              await pc.addIceCandidate(new RTCIceCandidate(signalMessage.candidate));
+              const candidate = new RTCIceCandidate(signalMessage.candidate);
+              if (!pc.remoteDescription) {
+                pendingIceCandidatesRef.current.push(candidate);
+              } else {
+                await pc.addIceCandidate(candidate);
+              }
             } catch (err) {
               console.error('Error adding ICE candidate on listener:', err);
             }
@@ -194,7 +222,7 @@ export const useWebRtcListener = (sendSignal, signalMessage, activeSpeaker) => {
     };
 
     handleSignal();
-  }, [signalMessage, sendSignal, setupAudioStream, closeConnection]);
+  }, [signalMessage, sendSignal, setupAudioStream, closeConnection, activeSpeaker]);
 
   // Clean up when active speaker ends or changes
   useEffect(() => {

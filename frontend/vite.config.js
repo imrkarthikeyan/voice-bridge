@@ -5,7 +5,14 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 
 // https://vite.js.org/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss(), basicSsl()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    basicSsl({
+      name: 'voicebridge-lan',
+      domains: ['localhost', '127.0.0.1', '192.168.31.9'],
+    }),
+  ],
   define: {
     global: 'window',
   },

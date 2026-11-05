@@ -1,0 +1,1 @@
+ALTER TABLE slides ADD COLUMN language VARCHAR(16);

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Volume2, Mic, Eye, EyeOff, Sparkles } from 'lucide-react';
 
-export const LiveSubtitlesOverlay = ({ speakerName, transcript, isLive }) => {
+export const LiveSubtitlesOverlay = ({ speakerName, transcript, translation, slideNumber, isLive }) => {
   const [isVisible, setIsVisible] = useState(true);
 
   if (!isLive || !speakerName) return null;
@@ -29,6 +29,11 @@ export const LiveSubtitlesOverlay = ({ speakerName, transcript, isLive }) => {
               <Sparkles className="w-3 h-3 text-purple-400" />
               <span>AI Subtitles</span>
             </div>
+            {slideNumber && (
+              <span className="text-[11px] text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                Slide {slideNumber}
+              </span>
+            )}
           </div>
 
           <button
@@ -54,9 +59,16 @@ export const LiveSubtitlesOverlay = ({ speakerName, transcript, isLive }) => {
         {isVisible && (
           <div className="min-h-[2.5rem] flex items-center">
             {transcript ? (
-              <p className="text-base sm:text-lg font-medium text-slate-100 leading-relaxed tracking-wide transition-all animate-fade-in">
-                "{transcript}"
-              </p>
+              <div>
+                <p className="text-base sm:text-lg font-medium text-slate-100 leading-relaxed tracking-wide transition-all animate-fade-in">
+                  "{transcript}"
+                </p>
+                {translation?.text && (
+                  <p className="mt-1 text-sm text-emerald-200/90 transition-all animate-fade-in">
+                    {translation.text}
+                  </p>
+                )}
+              </div>
             ) : (
               <p className="text-xs italic text-slate-400 flex items-center gap-2">
                 <Volume2 className="w-4 h-4 animate-bounce text-indigo-400" />

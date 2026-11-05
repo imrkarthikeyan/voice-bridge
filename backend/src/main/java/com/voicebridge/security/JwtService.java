@@ -41,6 +41,19 @@ public class JwtService {
                 .compact();
     }
 
+    public String generateToken(AudiencePrincipal principal) {
+        Instant now = Instant.now();
+        Instant expiry = now.plusMillis(expirationMs);
+        return Jwts.builder().subject(principal.getEmail())
+                .claim("audienceId", principal.getId()).claim("accountType", "AUDIENCE")
+                .claim("name", principal.getAccount().getDisplayName())
+                .issuedAt(Date.from(now)).expiration(Date.from(expiry))
+                .signWith(signingKey, SignatureAlgorithm.HS256).compact();
+    }
+
+    public String extractAccountType(String token) { return extractAllClaims(token).get("accountType", String.class); }
+    public Long extractAudienceId(String token) { return extractAllClaims(token).get("audienceId", Long.class); }
+
     public Instant extractExpiration(String token) {
         return extractClaim(token, Claims::getExpiration).toInstant();
     }

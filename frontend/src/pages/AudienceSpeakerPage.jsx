@@ -4,7 +4,7 @@ import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { useStompWebSocket } from '../hooks/useStompWebSocket';
 import { useWebRtcSpeaker } from '../hooks/useWebRtcSpeaker';
-import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
+import { useAiTranscription } from '../hooks/useAiTranscription';
 import { AudioWaveform } from '../components/AudioWaveform';
 import { getMyRequestStatus, startSpeaking, stopSpeaking } from '../api/speaking';
 import { Mic, MicOff, AlertTriangle, ShieldCheck, Sparkles } from 'lucide-react';
@@ -20,16 +20,19 @@ export const AudienceSpeakerPage = () => {
   const [loading, setLoading] = useState(true);
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState('');
+  const [targetLanguage, setTargetLanguage] = useState(
+    () => localStorage.getItem('vb_target_language') || 'en'
+  );
+  const transcriptSegmentRef = React.useRef(`segment-${crypto.randomUUID()}`);
+  const transcriptRevisionRef = React.useRef(0);
 
   const { isConnected, signalMessage, sendSignal, lastEvent } = useStompWebSocket(meetingCode);
 
-  const isApproved = statusInfo?.status === 'APPROVED' || statusInfo?.status === 'SPEAKING';
-
   // WebRTC Audio Engine hook
-  const { isLive, audioLevel, error: rtcError, startStreaming, stopStreaming } = useWebRtcSpeaker(
+  const { isLive, audioLevel, error: rtcError, localStream, startStreaming, stopStreaming } = useWebRtcSpeaker(
     sendSignal,
     signalMessage,
-    isApproved
+    statusInfo?.participantId
   );
 
   // Real-time Speech-to-Text Transcription
@@ -42,12 +45,23 @@ export const AudienceSpeakerPage = () => {
         speakerName: participantName,
         text: data.text,
         isFinal: data.isFinal,
+        segmentId: data.segmentId || transcriptSegmentRef.current,
+        revision: data.revision || ++transcriptRevisionRef.current,
+        language: data.language || 'und',
+        translation: data.translation,
+        confidence: data.confidence,
       });
     },
     [sendSignal, participantName]
   );
 
-  const { transcript } = useSpeechRecognition(isLive, handleTranscript);
+  useAiTranscription(localStream, isLive, handleTranscript, targetLanguage);
+
+  const handleTargetLanguageChange = (event) => {
+    const language = event.target.value;
+    setTargetLanguage(language);
+    localStorage.setItem('vb_target_language', language);
+  };
 
   const checkSpeakerStatus = useCallback(async () => {
     if (!sessionToken) {
@@ -81,7 +95,7 @@ export const AudienceSpeakerPage = () => {
   useEffect(() => {
     if (!lastEvent) return;
 
-    if (lastEvent.type === 'SPEAKER_STOPPED') {
+    if (lastEvent.type === 'SPEAKER_ENDED' || lastEvent.type === 'SPEAKER_STOPPED') {
       stopStreaming();
       navigate(`/waiting/${meetingCode}`);
     } else if (lastEvent.type === 'MEETING_CLOSED') {
@@ -142,6 +156,18 @@ export const AudienceSpeakerPage = () => {
               <p className="text-slate-400 text-xs mt-1">Speak clearly into your smartphone microphone</p>
             </div>
 
+            <label className="mb-6 flex items-center justify-between gap-3 text-left text-xs text-slate-300">
+              <span>Subtitle translation</span>
+              <select
+                value={targetLanguage}
+                onChange={handleTargetLanguageChange}
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white outline-none focus:border-indigo-400"
+              >
+                <option value="en">English</option>
+                <option value="ta">Tamil</option>
+              </select>
+            </label>
+
             {rtcError && (
               <div className="mb-6 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -183,7 +209,7 @@ export const AudienceSpeakerPage = () => {
                   <span>Live Subtitles Captions</span>
                 </div>
                 <p className="text-xs text-slate-200 font-mono bg-slate-950 p-2.5 rounded-lg border border-slate-800 min-h-[2.5rem]">
-                  {transcript || liveTranscript ? `"${transcript || liveTranscript}"` : 'Speak into your microphone to generate live subtitles...'}
+                  {liveTranscript ? `"${liveTranscript}"` : 'Speak into your microphone to generate live subtitles...'}
                 </p>
               </div>
             )}

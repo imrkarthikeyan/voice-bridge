@@ -40,40 +40,50 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .headers(headers -> headers
-                        .frameOptions(frame -> frame.sameOrigin())
-                        .contentTypeOptions(content -> {})
-                        .referrerPolicy(referrer -> referrer.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                .frameOptions(frame -> frame.sameOrigin())
+                .contentTypeOptions(content -> {
+                })
+                .referrerPolicy(referrer -> referrer.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+                .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.GET, "/api/meetings/*/presentations").permitAll()
-                        .requestMatchers(
-                                "/api/auth/**",
-                                "/api/health",
-                                "/api/meetings/join/**",
-                                "/api/meetings/*/qr",
-                                "/api/participants/join/**",
-                                "/api/participants/me",
-                                "/api/participants/session/**",
-                                "/api/participants/leave",
-                                "/api/speaking-requests/raise-hand",
-                                "/api/speaking-requests/me",
-                                "/api/speaking-requests/me/**",
-                                "/api/speaking-requests/my-status",
-                                "/api/speaking-requests/start",
-                                "/api/speaking-requests/stop",
-                                "/api/presentations/*/slides/**",
-                                "/api/presentations/*/session",
-                                "/api/meetings/*/presentation-session",
-                                "/ws/**",
-                                "/v3/api-docs/**",
-                                "/swagger-ui/**",
-                                "/swagger-ui.html",
-                                "/actuator/health"
-                        ).permitAll()
-                        .anyRequest().authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/meetings/*/presentations").permitAll()
+                .requestMatchers(
+                        "/api/auth/register",
+                        "/api/auth/login",
+                        "/api/audience/register",
+                        "/api/audience/login",
+                        "/api/audience/oauth/github/**",
+                        "/api/health",
+                        "/api/meetings/join/**",
+                        "/api/meetings/*/qr",
+                        "/api/participants/join/**",
+                        "/api/participants/me",
+                        "/api/participants/session/**",
+                        "/api/participants/leave",
+                        "/api/participants/profile",
+                        "/api/speaking-requests/raise-hand",
+                        "/api/speaking-requests/me",
+                        "/api/speaking-requests/me/**",
+                        "/api/speaking-requests/my-status",
+                        "/api/speaking-requests/start",
+                        "/api/speaking-requests/stop",
+                        "/api/presentations/*/slides/**",
+                        "/api/presentations/*/session",
+                        "/api/meetings/*/presentation-session",
+                        "/api/meetings/*/transcript",
+                        "/api/meetings/*/questions",
+                        "/api/meetings/*/timeline",
+                        "/ws/**",
+                        "/ai-ws",
+                        "/v3/api-docs/**",
+                        "/swagger-ui/**",
+                        "/swagger-ui.html",
+                        "/actuator/health"
+                ).permitAll()
+                .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
@@ -96,7 +106,10 @@ public class SecurityConfig {
         }
 
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"));
+        configuration.setAllowedHeaders(List.of(
+                "Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin",
+                "X-Participant-Token", "X-Session-Token"
+        ));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

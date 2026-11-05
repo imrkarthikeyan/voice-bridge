@@ -18,6 +18,7 @@ import com.voicebridge.repository.ParticipantRepository;
 import com.voicebridge.repository.SpeakerHistoryRepository;
 import com.voicebridge.repository.SpeakingRequestRepository;
 import com.voicebridge.service.SpeakingRequestService;
+import com.voicebridge.service.QuestionService;
 import com.voicebridge.websocket.MeetingEventPublisher;
 import com.voicebridge.websocket.MeetingEventType;
 import lombok.RequiredArgsConstructor;
@@ -34,11 +35,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SpeakingRequestServiceImpl implements SpeakingRequestService {
 
-    private static final List<SpeakingRequestStatus> ACTIVE_STATUSES =
-            List.of(SpeakingRequestStatus.WAITING, SpeakingRequestStatus.APPROVED, SpeakingRequestStatus.SPEAKING);
+    private static final List<SpeakingRequestStatus> ACTIVE_STATUSES
+            = List.of(SpeakingRequestStatus.WAITING, SpeakingRequestStatus.APPROVED, SpeakingRequestStatus.SPEAKING);
 
-    private static final List<SpeakingRequestStatus> HOLDING_FLOOR_STATUSES =
-            List.of(SpeakingRequestStatus.APPROVED, SpeakingRequestStatus.SPEAKING);
+    private static final List<SpeakingRequestStatus> HOLDING_FLOOR_STATUSES
+            = List.of(SpeakingRequestStatus.APPROVED, SpeakingRequestStatus.SPEAKING);
 
     private final SpeakingRequestRepository speakingRequestRepository;
     private final ParticipantRepository participantRepository;
@@ -46,6 +47,7 @@ public class SpeakingRequestServiceImpl implements SpeakingRequestService {
     private final SpeakerHistoryRepository speakerHistoryRepository;
     private final SpeakingRequestMapper speakingRequestMapper;
     private final MeetingEventPublisher eventPublisher;
+    private final QuestionService questionService;
 
     @Override
     @Transactional
@@ -119,6 +121,7 @@ public class SpeakingRequestServiceImpl implements SpeakingRequestService {
                 .orElseThrow(() -> new BusinessRuleViolationException("You are not currently speaking"));
 
         finishSpeaking(request, SpeakerEndReason.PARTICIPANT_STOPPED);
+        captureQuestion(request);
         log.info("Speaker stopped (self): meetingCode={}, participantId={}, requestId={}",
                 participant.getMeeting().getMeetingCode(), participant.getId(), request.getId());
 
@@ -218,6 +221,7 @@ public class SpeakingRequestServiceImpl implements SpeakingRequestService {
         }
 
         finishSpeaking(request, SpeakerEndReason.ORGANIZER_ENDED);
+        captureQuestion(request);
         log.info("Speaker ended (organizer): meetingId={}, requestId={}", request.getMeeting().getId(), request.getId());
 
         SpeakingRequestResponse response = speakingRequestMapper.toResponse(request);
@@ -279,6 +283,12 @@ public class SpeakingRequestServiceImpl implements SpeakingRequestService {
                 .endReason(endReason)
                 .build();
         speakerHistoryRepository.save(history);
+    }
+
+    private void captureQuestion(SpeakingRequest request) {
+        if (questionService != null) {
+            questionService.captureSpeakerTurn(request);
+        }
     }
 
     private int nextQueueOrder(Long meetingId) {

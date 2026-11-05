@@ -20,9 +20,34 @@ public class SignalMessage {
 
     private Long participantId;
 
-    /** SDP payload for OFFER / ANSWER messages. */
+    /**
+     * SDP payload for OFFER / ANSWER messages.
+     */
     private String sdp;
 
-    /** ICE candidate payload (candidate string, sdpMid, sdpMLineIndex) for ICE_CANDIDATE messages. */
+    /**
+     * ICE candidate payload (candidate string, sdpMid, sdpMLineIndex) for
+     * ICE_CANDIDATE messages.
+     */
     private Object candidate;
+
+    private String speakerName;
+
+    private String text;
+
+    private Boolean isFinal;
+
+    private String segmentId;
+
+    private Integer revision;
+
+    private String language;
+
+    private Long startMs;
+
+    private Long endMs;
+
+    private Double confidence;
+
+    private Object translation;
 }

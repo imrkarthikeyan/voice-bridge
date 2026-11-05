@@ -12,6 +12,7 @@ import { AudienceWaitingPage } from './pages/AudienceWaitingPage';
 import { AudienceSpeakerPage } from './pages/AudienceSpeakerPage';
 import { MeetingClosedPage } from './pages/MeetingClosedPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { AudienceAccountPage, AudienceOAuthCallbackPage } from './pages/AudienceAccountPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,6 +31,8 @@ export function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/audience/account" element={<AudienceAccountPage />} />
+          <Route path="/audience/oauth/callback" element={<AudienceOAuthCallbackPage />} />
           <Route path="/dashboard" element={<OrganizerDashboard />} />
           <Route path="/room/:meetingCode" element={<OrganizerMeetingRoom />} />
           <Route path="/join/:meetingCode" element={<AudienceJoinPage />} />

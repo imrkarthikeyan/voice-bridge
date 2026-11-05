@@ -96,6 +96,12 @@ export const LandingPage = () => {
                   <ArrowRight className="w-3 h-3" />
                 </Link>
               </div>
+              <div className="mt-3 text-xs">
+                <Link to="/audience/account" className="font-semibold text-cyan-400 hover:text-cyan-300 underline underline-offset-4">
+                  Audience account
+                </Link>
+                <span className="ml-2 text-slate-500">optional — anonymous joining still works</span>
+              </div>
             </div>
           </div>
         </section>

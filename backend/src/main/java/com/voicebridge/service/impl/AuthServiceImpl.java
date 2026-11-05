@@ -3,6 +3,7 @@ package com.voicebridge.service.impl;
 import com.voicebridge.dto.request.LoginRequest;
 import com.voicebridge.dto.request.RegisterOrganizerRequest;
 import com.voicebridge.dto.response.AuthResponse;
+import com.voicebridge.dto.response.OrganizerSummaryResponse;
 import com.voicebridge.entity.Organizer;
 import com.voicebridge.exception.DuplicateResourceException;
 import com.voicebridge.exception.InvalidCredentialsException;
@@ -59,6 +60,14 @@ public class AuthServiceImpl implements AuthService {
 
         log.info("Organizer logged in: id={}, email={}", organizer.getId(), organizer.getEmail());
         return buildAuthResponse(organizer);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public OrganizerSummaryResponse getCurrentOrganizer(Long organizerId) {
+        Organizer organizer = organizerRepository.findById(organizerId)
+                .orElseThrow(() -> new InvalidCredentialsException("Organizer account is no longer available"));
+        return organizerMapper.toSummaryResponse(organizer);
     }
 
     private AuthResponse buildAuthResponse(Organizer organizer) {
